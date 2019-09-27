@@ -4,6 +4,7 @@
  - Module Designed For The : zarinpal.com
  - Mail : Mail@GoldenSource.ir
 */
+
 use WHMCS\Database\Capsule;
 if(isset($_REQUEST['invoiceId']) && is_numeric($_REQUEST['invoiceId'])){
     require_once __DIR__ . '/../../init.php';
@@ -35,21 +36,22 @@ if(isset($_REQUEST['invoiceId']) && is_numeric($_REQUEST['invoiceId'])){
                 'Amount' => $amount,
             ]);
             if ($result->Status == 100) {
+                checkCbTransID($result->RefID);
                 logTransaction($gatewayParams['name'], $_REQUEST, 'Success');
                 addInvoicePayment(
                     $invoice->id,
                     $result->RefID,
-                    $amount,
+                    $invoice->total,
                     0,
                     'zarinpal'
-                ); 
+                );
             } else {
                 logTransaction($gatewayParams['name'], array(
                     'Code'        => 'Zarinpal Status Code',
                     'Message'     => $result->Status,
                     'Transaction' => $_GET['Authority'],
                     'Invoice'     => $invoice->id,
-                    'Amount'      => $amount,
+                    'Amount'      => $invoice->total,
                 ), 'Failure');
             }
         }
@@ -100,8 +102,8 @@ if (!defined('WHMCS')) {
 function zarinpal_MetaData()
 {
     return array(
-        'DisplayName' => 'ماژول پرداخت آنلاین زرین پال برای WHMCS',
-        'APIVersion' => '1.1',
+        'DisplayName' => 'ماژول پرداخت آنلاین ZarinPal.com برای WHMCS',
+        'APIVersion' => '1.0',
     );
 }
 
@@ -110,7 +112,7 @@ function zarinpal_config()
     return array(
         'FriendlyName' => array(
             'Type' => 'System',
-            'Value' => 'ZarinPal.IR',
+            'Value' => 'ZarinPal.com',
         ),
         'mirror' => array(
             'FriendlyName' => 'سرور',
@@ -129,7 +131,7 @@ function zarinpal_config()
             ),
         ),
         'MerchantID' => array(
-            'FriendlyName' => 'کد API',
+            'FriendlyName' => 'مریجنت کد',
             'Type' => 'text',
             'Size' => '255',
             'Default' => '',
