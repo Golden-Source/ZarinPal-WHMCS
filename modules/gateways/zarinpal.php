@@ -4,22 +4,12 @@
  - Module Designed For The : zarinpal.com
  - Mail : Mail@GoldenSource.ir
 */
-
 use WHMCS\Database\Capsule;
 if(isset($_REQUEST['invoiceId']) && is_numeric($_REQUEST['invoiceId'])){
     require_once __DIR__ . '/../../init.php';
     require_once __DIR__ . '/../../includes/gatewayfunctions.php';
     require_once __DIR__ . '/../../includes/invoicefunctions.php';
     $gatewayParams = getGatewayVariables('zarinpal');
-    if($gatewayParams['testMode'] == 'on'){
-        $zarinClient = new SoapClient('https://sandbox.zarinpal.com/pg/services/WebGate/wsdl', ['encoding' => 'UTF-8']);
-    } else {
-        if($gatewayParams['mirror'] == 'IR'){
-            $zarinClient = new SoapClient('https://ir.zarinpal.com/pg/services/WebGate/wsdl', ['encoding' => 'UTF-8']);
-        } else {
-            $zarinClient = new SoapClient('https://de.zarinpal.com/pg/services/WebGate/wsdl', ['encoding' => 'UTF-8']);
-        }
-    }
     if(isset($_REQUEST['Authority'], $_GET['Status'], $_GET['Authority'], $_REQUEST['callback']) && $_REQUEST['callback'] == 1){
         $invoice = Capsule::table('tblinvoices')->where('id', $_REQUEST['invoiceId'])->where('status', 'Unpaid')->first();
         if(!$invoice){
@@ -30,7 +20,7 @@ if(isset($_REQUEST['invoiceId']) && is_numeric($_REQUEST['invoiceId'])){
             if($gatewayParams['feeFromClient'] == 'on'){
                 $amount = ceil(1.01 * $amount);
             }
-            $result = $zarinClient->PaymentVerification([
+            $result = zarinpal_req('PaymentVerification', [
                 'MerchantID' => $gatewayParams['MerchantID'],
                 'Authority' => $_GET['Authority'],
                 'Amount' => $amount,
@@ -66,7 +56,7 @@ if(isset($_REQUEST['invoiceId']) && is_numeric($_REQUEST['invoiceId'])){
         if($gatewayParams['feeFromClient'] == 'on'){
             $amount = ceil(1.01 * $amount);
         }
-        $result = $zarinClient->PaymentRequest([
+        $result = zarinpal_req('PaymentRequest', [
             'MerchantID' => $gatewayParams['MerchantID'],
             'Amount' => $amount,
             'Description' => sprintf('پرداخت فاکتور #%s', $invoice->id),
@@ -99,10 +89,36 @@ if (!defined('WHMCS')) {
 	die('This file cannot be accessed directly');
 }
 
+function zarinpal_req($method, $data){
+    $gatewayParams = getGatewayVariables('zarinpal');
+    if($gatewayParams['testMode'] == 'on'){
+        $ch = curl_init("https://sandbox.zarinpal.com/pg/rest/WebGate/$method.json");
+    } else {
+        if($gatewayParams['mirror'] == 'IR'){
+            $ch = curl_init("https://ir.zarinpal.com/pg/rest/WebGate/$method.json");
+        } else {
+            $ch = curl_init("https://de.zarinpal.com/pg/rest/WebGate/$method.json");
+        }
+    }
+    curl_setopt($ch, CURLOPT_USERAGENT, 'ZarinPal Rest Api v1');
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonData = json_encode($data));
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
+     'Content-Type: application/json',
+     'Content-Length: ' . strlen($jsonData)
+    ));
+    $result = curl_exec($ch);
+    $err = curl_error($ch);
+    $result = json_decode($result);
+    curl_close($ch);
+    return $result;
+}
+
 function zarinpal_MetaData()
 {
     return array(
-        'DisplayName' => 'ماژول پرداخت آنلاین ZarinPal.com برای WHMCS',
+        'DisplayName' => 'ماژول پرداخت آنلاین Pay.IR برای WHMCS',
         'APIVersion' => '1.0',
     );
 }
@@ -112,7 +128,7 @@ function zarinpal_config()
     return array(
         'FriendlyName' => array(
             'Type' => 'System',
-            'Value' => 'ZarinPal.com',
+            'Value' => 'ZarinPal.IR',
         ),
         'mirror' => array(
             'FriendlyName' => 'سرور',
@@ -131,11 +147,11 @@ function zarinpal_config()
             ),
         ),
         'MerchantID' => array(
-            'FriendlyName' => 'مریجنت کد',
+            'FriendlyName' => 'کد API',
             'Type' => 'text',
             'Size' => '255',
             'Default' => '',
-            'Description' => 'کد api دریافتی از سایت ZarinPal.com',
+            'Description' => 'کد api دریافتی از سایت Pay.ir',
         ),
         'zarinGate' => array(
             'FriendlyName' => 'زرین گیت',
