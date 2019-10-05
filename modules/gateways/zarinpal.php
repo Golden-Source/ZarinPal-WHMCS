@@ -118,7 +118,7 @@ function zarinpal_req($method, $data){
 function zarinpal_MetaData()
 {
     return array(
-        'DisplayName' => 'ماژول پرداخت آنلاین Pay.IR برای WHMCS',
+        'DisplayName' => 'ماژول پرداخت آنلاین ZarinPal.com برای WHMCS',
         'APIVersion' => '1.0',
     );
 }
@@ -128,7 +128,7 @@ function zarinpal_config()
     return array(
         'FriendlyName' => array(
             'Type' => 'System',
-            'Value' => 'ZarinPal.IR',
+            'Value' => 'ZarinPal.Com',
         ),
         'mirror' => array(
             'FriendlyName' => 'سرور',
@@ -147,11 +147,11 @@ function zarinpal_config()
             ),
         ),
         'MerchantID' => array(
-            'FriendlyName' => 'کد API',
+            'FriendlyName' => 'مریجنت کد',
             'Type' => 'text',
             'Size' => '255',
             'Default' => '',
-            'Description' => 'کد api دریافتی از سایت Pay.ir',
+            'Description' => 'مریجنت کد دریافتی از سایت زرین پال',
         ),
         'zarinGate' => array(
             'FriendlyName' => 'زرین گیت',
