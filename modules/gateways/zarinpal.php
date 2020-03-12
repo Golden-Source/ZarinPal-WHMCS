@@ -60,8 +60,8 @@ if(isset($_REQUEST['invoiceId']) && is_numeric($_REQUEST['invoiceId'])){
             'MerchantID' => $gatewayParams['MerchantID'],
             'Amount' => $amount,
             'Description' => sprintf('پرداخت فاکتور #%s', $invoice->id),
-            'Email' => null,
-            'Mobile' => null,
+            'Email' => $client->email,
+            'Mobile' => $client->phonenumber,
             'CallbackURL' => $gatewayParams['systemurl'] . '/modules/gateways/zarinpal.php?invoiceId=' . $invoice->id . '&callback=1',
         ]);
         if ($result->Status == 100) {
