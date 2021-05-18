@@ -3,6 +3,7 @@
  - Author : GoldenSource.iR 
  - Module Designed For The : zarinpal.com
  - Mail : Mail@GoldenSource.ir
+ - This Modules is Dedicated written for Zarinpal and You will be dealt with in case of copying.
 */
 use WHMCS\Database\Capsule;
 if(isset($_REQUEST['invoiceId']) && is_numeric($_REQUEST['invoiceId'])){
