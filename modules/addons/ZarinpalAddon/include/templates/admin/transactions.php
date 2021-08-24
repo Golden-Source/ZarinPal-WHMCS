@@ -96,7 +96,7 @@ $statusTransaction = [
                     #<?= $transaction->invoice_id; ?>
                 </a>
             </td>
-            <td class="text-center"><?= formatCurrency($transaction->amount); ?></td>
+            <td class="text-center"><?= formatCurrency($transaction->amount / ($vars['currencyType'] == 'IRT' ? 10 : 1)); ?></td>
             <td class="text-center">
                 <span class="label <?= $statusBadgeColors[$transaction->status]; ?>">
                     <?= $statusTransaction[$transaction->status]; ?>
