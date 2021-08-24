@@ -1,126 +1,135 @@
 <?php
 /*
- - Author : GoldenSource.iR 
+ - Author : GoldenSource.iR - Amirhossein Matini 
  - Module Designed For The : zarinpal.com
- - Mail : Mail@GoldenSource.ir
- - This Modules is Dedicated written for Zarinpal and You will be dealt with in case of copying.
+ - Mail : Mail@GoldenSource.ir - matiniamirhossein@gmail.com
+ - This file is licensed to Golden source. You are not allowed to reuse this code for your other applications
 */
 use WHMCS\Database\Capsule;
-if(isset($_REQUEST['invoiceId']) && is_numeric($_REQUEST['invoiceId'])){
+use WHMCSZarinpal\Core\WebService;
+use WHMCSZarinpal\Enum\StatusEnum;
+
+$zarinpal_urls = [
+    'request_url' => [
+        'sandbox'    => 'https://sandbox.zarinpal.com/pg/v4/payment/request.json',
+        'production' => 'https://api.zarinpal.com/pg/v4/payment/request.json',
+    ],
+
+    'verify_url' => [
+        'sandbox'    => 'https://sandbox.zarinpal.com/pg/v4/payment/verify.json',
+        'production' => 'https://api.zarinpal.com/pg/v4/payment/verify.json',
+    ],
+
+    'redirect_url' => [
+        'sandbox'    => 'https://sandbox.zarinpal.com/pg/StartPay/',
+        'production' => 'https://www.zarinpal.com/pg/StartPay/',
+    ],
+];
+
+if (strtoupper($_SERVER['REQUEST_METHOD']) === 'POST' && isset($_POST['invoiceId']) && is_numeric($_POST['invoiceId'])) {
     require_once __DIR__ . '/../../init.php';
     require_once __DIR__ . '/../../includes/gatewayfunctions.php';
     require_once __DIR__ . '/../../includes/invoicefunctions.php';
-    $gatewayParams = getGatewayVariables('zarinpal');
-    if(isset($_REQUEST['Authority'], $_GET['Status'], $_GET['Authority'], $_REQUEST['callback']) && $_REQUEST['callback'] == 1){
-        $invoice = Capsule::table('tblinvoices')->where('id', $_REQUEST['invoiceId'])->where('status', 'Unpaid')->first();
-        if(!$invoice){
-            die("Invoice not found");
+    require_once dirname(__DIR__) . "/addons/ZarinpalAddon/include/bootstrap.php";
+    ZarinpalAddon_activate();
+    if (isset($_SESSION['uid'])) {
+	$gatewayParams = getGatewayVariables('zarinpal');
+        $iranAccessOnly = Capsule::table('mod_zarinpal_settings')->where('name', 'iran_access_only')->first()->value;
+        if ($iranAccessOnly == 1 && !ZarinpalAddon_check_iran()) {
+             echo $gatewayParams['VPN'];
+            die();
         }
-        if ($_GET['Status'] == 'OK') {
-            $amount = ceil($invoice->total / ($gatewayParams['currencyType'] == 'IRT' ? 1 : 10));
-            if($gatewayParams['feeFromClient'] == 'on'){
-                $amount = ceil(1.01 * $amount);
-            }
-            $result = zarinpal_req('PaymentVerification', [
-                'MerchantID' => $gatewayParams['MerchantID'],
-                'Authority' => $_GET['Authority'],
-                'Amount' => $amount,
-            ]);
-            if ($result->Status == 100) {
-                checkCbTransID($result->RefID);
-                logTransaction($gatewayParams['name'], $_REQUEST, 'Success');
-                addInvoicePayment(
-                    $invoice->id,
-                    $result->RefID,
-                    $invoice->total,
-                    0,
-                    'zarinpal'
-                );
-            } else {
-                logTransaction($gatewayParams['name'], array(
-                    'Code'        => 'Zarinpal Status Code',
-                    'Message'     => $result->Status,
-                    'Transaction' => $_GET['Authority'],
-                    'Invoice'     => $invoice->id,
-                    'Amount'      => $invoice->total,
-                ), 'Failure');
-            }
-        }
-        header('Location: ' . $gatewayParams['systemurl'] . '/viewinvoice.php?id=' . $invoice->id);
-    } else if(isset($_SESSION['uid'])){
-        $invoice = Capsule::table('tblinvoices')->where('id', $_REQUEST['invoiceId'])->where('status', 'Unpaid')->where('userid', $_SESSION['uid'])->first();
-        if(!$invoice){
+        $invoice = Capsule::table('tblinvoices')->where('id', $_POST['invoiceId'])->where('status', 'Unpaid')->where('userid', $_SESSION['uid'])->first();
+        if (!$invoice) {
             die("Invoice not found");
         }
         $client = Capsule::table('tblclients')->where('id', $_SESSION['uid'])->first();
-        $amount = ceil($invoice->total / ($gatewayParams['currencyType'] == 'IRT' ? 1 : 10));
-        if($gatewayParams['feeFromClient'] == 'on'){
-            $amount = ceil(1.01 * $amount);
-        }
-        $result = zarinpal_req('PaymentRequest', [
-            'MerchantID' => $gatewayParams['MerchantID'],
-            'Amount' => $amount,
-            'Description' => sprintf('پرداخت فاکتور #%s', $invoice->id),
-            'Email' => $client->email,
-            'Mobile' => $client->phonenumber,
-            'CallbackURL' => $gatewayParams['systemurl'] . '/modules/gateways/zarinpal.php?invoiceId=' . $invoice->id . '&callback=1',
+        $amount = ceil($invoice->total * ($gatewayParams['currencyType'] == 'IRT' ? 10 : 1));
+        $uuid = ZarinpalAddon_gen_uuid();
+        $transactionId = Capsule::table('mod_zarinpal_transactions')->insertGetId([
+            'uuid'       => $uuid,
+            'user_id'    => $client->id,
+            'invoice_id' => $invoice->id,
+            'ip_address' => WebService::ipAddress(),
+            'amount'     => $amount,
+            'created_at' => time(),
+            'updated_at' => time(),
         ]);
-        if ($result->Status == 100) {
-            if($gatewayParams['testMode'] == 'on'){
-                if($gatewayParams['zarinGate'] == 'on'){
-                    header('Location: https://sandbox.zarinpal.com/pg/StartPay/'.$result->Authority.'/ZarinGate');
-                } else {
-                    header('Location: https://sandbox.zarinpal.com/pg/StartPay/'.$result->Authority);
-                }
-            } else {
-                if($gatewayParams['zarinGate'] == 'on'){
-                    header('Location: https://www.zarinpal.com/pg/StartPay/'.$result->Authority.'/ZarinGate');
-                } else {
-                    header('Location: https://www.zarinpal.com/pg/StartPay/'.$result->Authority);
-                }
-            }
-        } else {
-            echo 'اتصال به درگاه امکان پذیر نیست: ', $result->Status;
+
+        $data = [
+            'merchant_id'  => $gatewayParams['MerchantID'],
+            'amount'       => $amount,
+            'description'  => sprintf('پرداخت فاکتور #%s', $invoice->id),
+            'metadata'     => ['email' => $client->email],
+            'callback_url' => $gatewayParams['systemurl'] . '/modules/gateways/callback/zarinpal.php?uuid=' . $uuid,
+        ];
+
+        $mobile = ZarinpalAddon_getMobileNumber($client->id);
+        if (!empty($mobile)) {
+            $data['metadata']['mobile'] = $mobile;
         }
+
+        $result = zarinpal_req($zarinpal_urls['request_url'][$gatewayParams['testMode'] == 'on' ? 'sandbox' : 'production'], $data);
+        if (is_numeric($result['data']['code']) && (int)$result['data']['code'] === 100) {
+            Capsule::table('mod_zarinpal_transactions')->where('id', $transactionId)->update([
+                'authority'  => $result['data']['authority'],
+                'updated_at' => time(),
+            ]);
+            WebService::redirect($zarinpal_urls['redirect_url'][$gatewayParams['testMode'] == 'on' ? 'sandbox' : 'production'] . $result['data']['authority']);
+            exit();
+        } else {
+            Capsule::table('mod_zarinpal_transactions')->where('id', $transactionId)->update([
+                'status'          => StatusEnum::FAILED,
+                'failure_message' => $result['errors']['message'],
+                'updated_at'      => time(),
+            ]);
+            echo 'اتصال به درگاه امکان پذیر نیست: ', $result['errors']['message'];
+        }
+        return;
     }
-    return;
 }
 
 if (!defined('WHMCS')) {
-	die('This file cannot be accessed directly');
+    die('This file cannot be accessed directly');
 }
 
-function zarinpal_req($method, $data){
-    $gatewayParams = getGatewayVariables('zarinpal');
-    if($gatewayParams['testMode'] == 'on'){
-        $ch = curl_init("https://sandbox.zarinpal.com/pg/rest/WebGate/$method.json");
-    } else {
-        if($gatewayParams['mirror'] == 'IR'){
-            $ch = curl_init("https://ir.zarinpal.com/pg/rest/WebGate/$method.json");
-        } else {
-            $ch = curl_init("https://de.zarinpal.com/pg/rest/WebGate/$method.json");
-        }
+function zarinpal_req($url, array $parameters = [])
+{
+    $curl = curl_init();
+
+    curl_setopt_array($curl, [
+        CURLOPT_URL            => $url,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_ENCODING       => '',
+        CURLOPT_MAXREDIRS      => 10,
+        CURLOPT_TIMEOUT        => 0,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_1_1,
+        CURLOPT_CUSTOMREQUEST  => 'POST',
+        CURLOPT_POSTFIELDS     => json_encode($parameters),
+        CURLOPT_HTTPHEADER     => [
+            'accept: application/json',
+            'content-type: application/json'
+        ],
+    ]);
+
+    $response = curl_exec($curl);
+
+    if (curl_errno($curl) != 0) {
+        $error = curl_error($curl);
+        curl_close($curl);
+        throw new \Exception($error);
     }
-    curl_setopt($ch, CURLOPT_USERAGENT, 'ZarinPal Rest Api v1');
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'POST');
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonData = json_encode($data));
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-     'Content-Type: application/json',
-     'Content-Length: ' . strlen($jsonData)
-    ));
-    $result = curl_exec($ch);
-    $err = curl_error($ch);
-    $result = json_decode($result);
-    curl_close($ch);
-    return $result;
+
+    curl_close($curl);
+    return json_decode($response, true);
 }
 
 function zarinpal_MetaData()
 {
     return array(
         'DisplayName' => 'ماژول پرداخت آنلاین ZarinPal.com برای WHMCS',
-        'APIVersion' => '1.0',
+        'APIVersion'  => '1.0.7',
     );
 }
 
@@ -128,54 +137,43 @@ function zarinpal_config()
 {
     return array(
         'FriendlyName' => array(
-            'Type' => 'System',
-            'Value' => 'ZarinPal.Com',
-        ),
-        'mirror' => array(
-            'FriendlyName' => 'سرور',
-            'Type' => 'dropdown',
-            'Options' => array(
-                'DE' => 'آلمان',
-                'IR' => 'ایران',
-            ),
+            'Type'  => 'System',
+            'Value' => 'ZarinPal.IR',
         ),
         'currencyType' => array(
-            'FriendlyName' => 'نوع ارز',
-            'Type' => 'dropdown',
-            'Options' => array(
+            'FriendlyName' => 'واحد ارز',
+            'Type'         => 'dropdown',
+            'Options'      => array(
                 'IRR' => 'ریال',
                 'IRT' => 'تومان',
             ),
         ),
-        'MerchantID' => array(
-            'FriendlyName' => 'مریجنت کد',
-            'Type' => 'text',
-            'Size' => '255',
-            'Default' => '',
-            'Description' => 'مریجنت کد دریافتی از سایت زرین پال',
+        'MerchantID'   => array(
+            'FriendlyName' => 'کد API',
+            'Type'         => 'text',
+            'Size'         => '255',
+            'Default'      => '',
+            'Description'  => 'کد api دریافتی از سایت ZarinPal.com',
         ),
-        'zarinGate' => array(
-            'FriendlyName' => 'زرین گیت',
-            'Type' => 'yesno',
-            'Description' => 'در صورت استفاده از زرین گیت تیک بزنید',
+        'VPN'     => array(
+            'FriendlyName' => 'محدود سازی آی پی',
+            'Type'         => 'text',
+            'Size'         => '255',
+            'Default'      => 'لطفا برای ادامه فعالیت ، فیلترشکن خود را خاموش کنید .',
+            'Description'  => 'لطفا برای بخش محدودسازی آی پی ، یک متن تعیین کنید',
         ),
-        'feeFromClient' => array(
-            'FriendlyName' => 'دریافت مالیات از کاربر',
-            'Type' => 'yesno',
-            'Description' => 'برای دریافت مالیات از کاربر تیک بزنید',
-        ),
-        'testMode' => array(
+        'testMode'     => array(
             'FriendlyName' => 'حالت تستی',
-            'Type' => 'yesno',
-            'Description' => 'برای فعال کردن حالت تستی تیک بزنید',
+            'Type'         => 'yesno',
+            'Description'  => 'برای فعال کردن حالت تستی تیک بزنید',
         ),
     );
 }
 
 function zarinpal_link($params)
 {
-    $htmlOutput = '<form method="GET" action="modules/gateways/zarinpal.php">';
-    $htmlOutput .= '<input type="hidden" name="invoiceId" value="' . $params['invoiceid'] .'">';
+    $htmlOutput = '<form method="POST" action="modules/gateways/zarinpal.php">';
+    $htmlOutput .= '<input type="hidden" name="invoiceId" value="' . $params['invoiceid'] . '">';
     $htmlOutput .= '<input type="submit" value="' . $params['langpaynow'] . '" />';
     $htmlOutput .= '</form>';
     return $htmlOutput;
